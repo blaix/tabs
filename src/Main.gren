@@ -1,0 +1,249 @@
+module Main exposing (main)
+
+
+import Ansi
+import Array2d exposing (Array2d)
+import Init
+import Node
+import Task
+import Tui
+import UI
+import UI.Attribute as Attr
+
+
+main : Tui.Program Model Msg
+main =
+    Tui.defineProgram
+        { init = init
+        , update = update
+        , view = view
+        , subscriptions = subscriptions
+        , onInput = GotInput
+        }
+
+
+-- MODEL
+
+
+type alias Model =
+    { bars : Array Bar
+    , cursor : Cursor
+    }
+
+
+type alias Bar =
+    Array2d Cell
+
+
+type Cell
+    = Filled String
+    | Empty
+
+
+type alias Cursor =
+    { bar : Int
+    , x : Int
+    , y : Int
+    }
+
+init : Tui.Environment -> Init.Task { model : Model, command : Cmd Msg }
+init env =
+    Node.startProgram
+        { model =
+            { bars =
+                [ [ [ Empty, Empty, Empty, Empty, Empty, Empty, Empty ]
+                  , [ Empty, Empty, Empty, Empty, Empty, Empty, Empty ]
+                  , [ Empty, Empty, Empty, Empty, Empty, Empty, Empty ]
+                  , [ Empty, Empty, Empty, Empty, Empty, Empty, Empty ]
+                  , [ Empty, Empty, Empty, Empty, Empty, Empty, Empty ]
+                  , [ Empty, Empty, Empty, Empty, Empty, Empty, Empty ]
+                  ]
+                ]
+            , cursor =
+                { bar = 0
+                , x = 1
+                , y = 0
+                }
+            }
+        , command = 
+            Tui.hideCursor env.stdout
+                |> Task.execute
+        }
+
+
+-- UPDATE
+
+
+type Msg
+    = GotInput Tui.Input
+
+
+type Direction
+    = Left
+    | Right
+    | Up
+    | Down
+    | Jump Cursor
+
+
+update : Msg -> Model -> { model : Model, command : Cmd Msg }
+update msg model =
+    when msg is
+        GotInput input ->
+            { command = Cmd.none
+            , model = 
+                when input is
+                    Tui.KeyChar c -> setCell (Filled c) model
+                    Tui.ArrowLeft -> moveCursor Left model
+                    Tui.ArrowRight -> moveCursor Right model 
+                    Tui.ArrowUp -> moveCursor Up model
+                    Tui.ArrowDown -> moveCursor Down model
+                    Tui.Return -> moveCursor Down model
+                    Tui.Backspace -> setCell Empty model
+                    Tui.Delete -> setCell Empty model
+                    _ -> model
+            }
+
+
+getBar : Model -> Bar
+getBar model =
+    model.bars
+        |> Array.get model.cursor.bar
+        |> Maybe.withDefault [[]]
+
+
+setCell : Cell -> Model -> Model
+setCell cell model =
+    let
+        newBar =
+            getBar model
+                |> Array2d.set
+                    { x = model.cursor.x
+                    , y = model.cursor.y
+                    }
+                    cell
+    in
+    { model
+        | bars =
+            model.bars
+                |> Array.set model.cursor.bar newBar
+    }
+
+
+moveCursor : Direction -> Model -> Model
+moveCursor direction model =
+    let
+        cursor =
+            model.cursor
+
+        bar =
+            getBar model
+
+        xMax =
+            bar
+                |> Array.map Array.length
+                |> Array.maximum
+                |> Maybe.map (\n -> n - 1)
+                |> Maybe.withDefault 0
+                |> max 0
+
+        yMax =
+            (Array.length bar) - 1
+                |> max 0
+
+        newCursor =
+            when direction is
+                Left ->
+                    { cursor
+                        | x = 
+                            max 0 (model.cursor.x - 1)
+                    }
+
+                Right ->
+                    { cursor
+                        | x =
+                            min xMax (model.cursor.x + 1)
+                    }
+
+                Up ->
+                    { cursor
+                        | y =
+                            max 0 (model.cursor.y - 1)
+                    }
+
+                Down ->
+                    { cursor
+                        | y =
+                            min yMax (model.cursor.y + 1)
+                    }
+
+                Jump c ->
+                    c
+    in
+    { model | cursor = newCursor }
+
+
+-- VIEW
+
+
+view : Model -> UI.Element
+view model =
+    placeCursor model
+        |> .bars
+        |> Array.map barToString
+        |> Array.map (UI.text [])
+        |> UI.column []
+
+
+placeCursor : Model -> Model
+placeCursor model =
+    let
+        cell =
+            getBar model
+                |> Array2d.get
+                    { x = model.cursor.x
+                    , y = model.cursor.y
+                    }
+                |> Maybe.withDefault Empty
+
+        cellContents =
+            when cell is
+                Empty -> " "
+                Filled c -> c
+        
+        newCell =
+            cellContents
+                |> Ansi.wrapColor Ansi.Black
+                |> Ansi.wrapBgColor Ansi.White
+                |> Filled
+    in
+    setCell newCell model
+
+
+barToString : Bar -> String
+barToString bar =
+    bar
+        |> Array.map lineToString
+        |> String.join "\n"
+
+
+lineToString : Array Cell -> String
+lineToString line =
+    line
+        |> Array.map cellToString
+        |> String.join ""
+
+
+cellToString : Cell -> String
+cellToString cell =
+    when cell is
+        Filled char ->
+            char
+
+        Empty ->
+            "-"
+
+
+subscriptions : Model -> Sub Msg
+subscriptions model =
+    Sub.none
