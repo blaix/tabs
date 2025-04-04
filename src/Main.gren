@@ -37,7 +37,6 @@ type alias Bar =
 
 type Cell
     = Filled String
-    | T String
     | Empty
 
 
@@ -52,14 +51,14 @@ init env =
     Node.startProgram
         { model =
             { bars =
-                [ [ [ T " ", T " ", T " ", T " ", T " ", T " ", T " " ]
-                  , [ Empty, Empty, Empty, Empty, Empty, Empty, Empty ]
-                  , [ Empty, Empty, Empty, Empty, Empty, Empty, Empty ]
-                  , [ Empty, Empty, Empty, Empty, Empty, Empty, Empty ]
-                  , [ Empty, Empty, Empty, Empty, Empty, Empty, Empty ]
-                  , [ Empty, Empty, Empty, Empty, Empty, Empty, Empty ]
-                  , [ Empty, Empty, Empty, Empty, Empty, Empty, Empty ]
-                  , [ T " ", T " ", T " ", T " ", T " ", T " ", T " " ]
+                [ [ Array.repeat 8 (Filled " ")
+                  , Array.repeat 8 Empty
+                  , Array.repeat 8 Empty
+                  , Array.repeat 8 Empty
+                  , Array.repeat 8 Empty
+                  , Array.repeat 8 Empty
+                  , Array.repeat 8 Empty
+                  , Array.repeat 8 (Filled " ")
                   ]
                 ]
             , cursor =
@@ -144,11 +143,25 @@ setCell newCell model =
             model.bars
                 |> Array.set model.cursor.bar newBar
         , cursor =
-            when oldCell is
+            if onTextRow model then
                 -- move to right when typing in text row
-                T _ -> moveCursor Right model |> .cursor
-                _ -> model.cursor
+                moveCursor Right model |> .cursor
+            else
+                model.cursor
     }
+
+
+onTextRow : Model -> Bool
+onTextRow model =
+    let
+        bar =
+            getBar model
+
+        yMax =
+            (Array.length bar) - 1
+                |> max 0
+    in
+    model.cursor.y == 0 || model.cursor.y == yMax
 
 
 moveCursor : Direction -> Model -> Model
@@ -200,10 +213,41 @@ moveCursor direction model =
 
                 Jump c ->
                     c
+
+        newModel =
+            if newCursor.x == xMax then
+                extend model
+            else
+                model
     in
-    { model | cursor = newCursor }
+    { newModel 
+        | cursor = newCursor
+    }
 
 
+extend : Model -> Model
+extend model =
+    let
+        newBar =
+            getBar model
+                |> Array.map
+                    (\line ->
+                        let
+                            append =
+                                if onTextRow model then
+                                    Filled " "
+                                else
+                                    Empty
+                        in
+                        Array.append [ append ] line
+                    )
+    in
+    { model
+        | bars =
+            Array.set model.cursor.bar newBar model.bars
+    }
+
+                                
 -- VIEW
 
 
@@ -226,7 +270,6 @@ placeCursor model =
             when cell is
                 Empty -> " "
                 Filled c -> c
-                T c -> c
         
         newCell =
             cellContents
@@ -255,9 +298,6 @@ cellToString : Cell -> String
 cellToString cell =
     when cell is
         Filled char ->
-            char
-
-        T char ->
             char
 
         Empty ->
