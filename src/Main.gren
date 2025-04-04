@@ -37,6 +37,7 @@ type alias Bar =
 
 type Cell
     = Filled String
+    | T String
     | Empty
 
 
@@ -51,12 +52,14 @@ init env =
     Node.startProgram
         { model =
             { bars =
-                [ [ [ Empty, Empty, Empty, Empty, Empty, Empty, Empty ]
+                [ [ [ T " ", T " ", T " ", T " ", T " ", T " ", T " " ]
                   , [ Empty, Empty, Empty, Empty, Empty, Empty, Empty ]
                   , [ Empty, Empty, Empty, Empty, Empty, Empty, Empty ]
                   , [ Empty, Empty, Empty, Empty, Empty, Empty, Empty ]
                   , [ Empty, Empty, Empty, Empty, Empty, Empty, Empty ]
                   , [ Empty, Empty, Empty, Empty, Empty, Empty, Empty ]
+                  , [ Empty, Empty, Empty, Empty, Empty, Empty, Empty ]
+                  , [ T " ", T " ", T " ", T " ", T " ", T " ", T " " ]
                   ]
                 ]
             , cursor =
@@ -112,21 +115,39 @@ getBar model =
         |> Maybe.withDefault [[]]
 
 
+getCell : Model -> Cell
+getCell model =
+    getBar model
+        |> Array2d.get
+            { x = model.cursor.x
+            , y = model.cursor.y
+            }
+        |> Maybe.withDefault Empty
+
+
 setCell : Cell -> Model -> Model
-setCell cell model =
+setCell newCell model =
     let
+        oldCell =
+            getCell model
+
         newBar =
             getBar model
                 |> Array2d.set
                     { x = model.cursor.x
                     , y = model.cursor.y
                     }
-                    cell
+                    newCell
     in
     { model
         | bars =
             model.bars
                 |> Array.set model.cursor.bar newBar
+        , cursor =
+            when oldCell is
+                -- move to right when typing in text row
+                T _ -> moveCursor Right model |> .cursor
+                _ -> model.cursor
     }
 
 
@@ -199,24 +220,20 @@ placeCursor : Model -> Model
 placeCursor model =
     let
         cell =
-            getBar model
-                |> Array2d.get
-                    { x = model.cursor.x
-                    , y = model.cursor.y
-                    }
-                |> Maybe.withDefault Empty
+            getCell model
 
         cellContents =
             when cell is
                 Empty -> " "
                 Filled c -> c
+                T c -> c
         
         newCell =
             cellContents
                 |> Ansi.wrapColor Ansi.Black
                 |> Ansi.wrapBgColor Ansi.White
                 |> Filled
-    in
+    in 
     setCell newCell model
 
 
@@ -238,6 +255,9 @@ cellToString : Cell -> String
 cellToString cell =
     when cell is
         Filled char ->
+            char
+
+        T char ->
             char
 
         Empty ->
